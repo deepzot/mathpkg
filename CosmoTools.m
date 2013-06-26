@@ -79,6 +79,10 @@ specified filename in CAMB input format."
 "\[CapitalOmega]rad[name][z] returns the radiation energy density relative to the critical density at the specified redshift."
 
 
+\[CapitalOmega]photons::usage=
+"\[CapitalOmega]photons[name][z] returns the photon energy density relative to the critical density at the specified redshift."
+
+
 \[CapitalOmega]de::usage=
 "\[CapitalOmega]de[name][z] returns the dark-energy density relative to the critical density at the specified redshift."
 
@@ -167,6 +171,17 @@ rsdrag::usage=
 The result is cached after the first evaluation."
 
 
+recombinationXe::usage=
+"recombinationXe[cosmology,zmin,zmax] returns a 2 functions that evaluate the free electron fraction
+(relative to Hydrogen nuclei) and the matter temperature respectively at redshift zmin <= z <= zmax 
+for the named cosmology."
+
+
+\[Tau]b::usage=
+"\[Tau]b[cosmology,xe,zd,zmin] calculates the baryon drag optical depth to redshift zd > zmin for 
+the named cosmology and free election function xe."
+
+
 Begin["Private`"]
 
 
@@ -183,6 +198,14 @@ radiationDensity[Tcmb_,Nnu_]:=
 Units`Convert[
     (\[Pi]^2/15/(PhysicalConstants`PlanckConstantReduced PhysicalConstants`SpeedOfLight)^3
     (PhysicalConstants`BoltzmannConstant Tcmb Units`Kelvin)^4(1+7/8(4/11)^(4/3)Nnu))/
+    (Units`Joule/Units`Meter^3),1
+]
+
+
+photonDensity[Tcmb_]:=
+Units`Convert[
+    (\[Pi]^2/15/(PhysicalConstants`PlanckConstantReduced PhysicalConstants`SpeedOfLight)^3
+    (PhysicalConstants`BoltzmannConstant Tcmb Units`Kelvin)^4)/
     (Units`Joule/Units`Meter^3),1
 ]
 
@@ -223,12 +246,14 @@ With[{
     ns=OptionValue["ns"],
     amps=OptionValue["amps"],
     kpivot=OptionValue["kpivot"],
-    retau=OptionValue["retau"]
+    retau=OptionValue["retau"],
+	YP=OptionValue["YP"]
 },
 Module[{\[CapitalOmega]mval,\[CapitalOmega]\[CapitalLambda]val},
     name/: Options[name]= { "h"->h,"\[CapitalOmega]\[CapitalLambda]"->\[CapitalOmega]\[CapitalLambda],"\[CapitalOmega]bh2"->\[CapitalOmega]bh2,"w0"->w0,"wa"->wa,"\[CapitalOmega]k"->\[CapitalOmega]k,
-        "Tcmb"->Tcmb,"Nnu"->Nnu,"ns"->ns,"amps"->amps,"kpivot"->kpivot,"retau"->retau };
+        "Tcmb"->Tcmb,"Nnu"->Nnu,"ns"->ns,"amps"->amps,"kpivot"->kpivot,"retau"->retau,"YP"->YP };
     name/: \[CapitalOmega]rad[name]=Function[z,Evaluate[Simplify[radiationDensity[Tcmb,Nnu]/criticalDensityToday[h](1+z)^4]]];
+	name/: \[CapitalOmega]photons[name]=Function[z,Evaluate[Simplify[photonDensity[Tcmb]/criticalDensityToday[h](1+z)^4]]];
     \[CapitalOmega]mval=If[\[CapitalOmega]m===Automatic,1-\[CapitalOmega]\[CapitalLambda]-\[CapitalOmega]k-\[CapitalOmega]rad[name][0],\[CapitalOmega]m];
     \[CapitalOmega]\[CapitalLambda]val=If[\[CapitalOmega]\[CapitalLambda]===Automatic,1-\[CapitalOmega]m-\[CapitalOmega]k-\[CapitalOmega]rad[name][0],\[CapitalOmega]\[CapitalLambda]];
     If[\[CapitalOmega]m+\[CapitalOmega]\[CapitalLambda]+\[CapitalOmega]k+\[CapitalOmega]rad[name][0]!=1,
@@ -256,7 +281,7 @@ SetAttributes[createCosmology,HoldFirst]
 Options[createCosmology]={
     "h"->0.7,"\[CapitalOmega]\[CapitalLambda]"->0.73,"\[CapitalOmega]m"->Automatic,"\[CapitalOmega]bh2"->0.0227,"w0"->-1,"wa"->0,"\[CapitalOmega]k"->0,
     "Tcmb"->2.72548,"Nnu"->3.03761,"ns"->0.972,"amps"->(2.41*10^-9),"kpivot"->0.002,
-    "retau"->0.089
+    "retau"->0.089,"YP"->0.24
 };
 
 
@@ -294,7 +319,7 @@ Export[filename,{
 
 (* Builds a function that evaluates f[z]=scale*transform[z,Integral[integrand[zz],{zz,0,z}]] using interpolation
 in log(1+z) with the specified number of points per decade. The default scale=1 and transform[z,f]=f.
-With inverted\[Rule]True, evaluates z[f] instead of f[z]. *)
+With inverted->True, evaluates z[f] instead of f[z]. *)
 Clear[buildFunction]
 buildFunction[integrand_,zmax_,OptionsPattern[]]:=
 With[{pointsPerDecade=OptionValue["pointsPerDecade"],inverted=OptionValue["inverted"],
@@ -406,6 +431,75 @@ Module[{scale,sdrag},
     scale=hubbleScale[PhysicalConstants`SpeedOfLight,OptionValue[cosmology,"h"],Units`Mega Units`Parsec];
     sdrag=Log[1+zdrag[cosmology]];
     scale NIntegrate[betas[cosmology][Exp[s]-1]/Hratio[cosmology][Exp[s]-1]Exp[s],{s,sdrag,Infinity}]
+]
+
+
+Clear[recombinationXe]
+(* NDSolve doesn't like to go all the way down below ~100 or past ~1800 *)
+recombinationXe[cosmology_,zmin_:100,zmax_:1800]:=
+With[{
+(* Case B recombination parameters *)
+a=4.309,b=-0.6166,c=0.6703,d=0.5300,F=1.14,
+T0=OptionValue[cosmology,"Tcmb"]Units`Kelvin (* CMB Temperature Today *),
+Arad=4 PhysicalConstants`StefanConstant/PhysicalConstants`SpeedOfLight (* Radiation Constant *),
+\[Sigma]T=PhysicalConstants`ThomsonCrossSection,
+kB=PhysicalConstants`BoltzmannConstant,
+hP=PhysicalConstants`PlanckConstant,
+me=PhysicalConstants`ElectronMass,
+mp=PhysicalConstants`ProtonMass,
+EionH2s=5.446605 10^-19 Units`Joule (* H 2s ionization energy *),
+E2s1sH=1.63403067 10^-18 Units`Joule (* H 2s energy from the ground state *),
+\[Lambda]\[Alpha]=1215.668 10^-10 Units`Meter (* Lyman Alpha wavelength *),
+\[CapitalLambda]2\[Gamma]=8.22458/Units`Second (* 2 photon decay rate *),
+YP=OptionValue[cosmology,"YP"] (* Helium fraction *),
+\[CapitalOmega]b=OptionValue[cosmology,"\[CapitalOmega]bh2"]/OptionValue[cosmology,"h"]^2 (* Baryon Fraction Today *),
+\[Rho]crit=criticalDensityToday[OptionValue[cosmology,"h"]] Units`Joule/Units`Meter^3 (* Critical Density Today *)},
+Module[{z,H,Trad,Tmat,t,\[Rho]b,nb,ne,nH,nHe,xe,\[Alpha]B,\[Beta]B,K,C,TmatRHS},
+	(* Hubble Rate *)
+	H=H0[cosmology]Hratio[cosmology][z]Convert[(Units`Kilo Units`Meter/Units`Second/(Units`Mega Units`Parsec)),1/Units`Second];
+	(* Radiation Temperature *)
+	Trad=T0(1+z);
+	(* t parameter for Case B recombination *)
+	t=Tmat[z]Kelvin/(10^4 Kelvin);
+	(* Case B recombination coefficient *)
+	\[Alpha]B=F 10^-19 (a t^b)/(1+c t^d) Units`Meter^3 /Units`Second;
+	(* Total Photoionization Rate *)
+	\[Beta]B=Units`Convert[\[Alpha]B*( (2\[Pi] me Tmat[z]Units`Kelvin kB)/hP^2)^(3/2)Exp[-EionH2s/(Tmat[z]Units`Kelvin kB)],1/Units`Second];
+	(* Baryon Density *)
+	\[Rho]b=\[Rho]crit (1+z)^3 \[CapitalOmega]b;
+	(* Number Density of Hydrogen Nuclei *)
+	nH=Units`Convert[(1-YP)\[Rho]b/(mp PhysicalConstants`SpeedOfLight^2),1/Units`Meter^3];
+	(* Number Density of Electrons *)
+	ne=Units`Convert[xe[z]*nH,1/Units`Meter^3];
+	(* Number Density of Helium Nuclei *)
+	nHe=Units`Convert[YP*\[Rho]b/(4*mp PhysicalConstants`SpeedOfLight^2),1/Units`Meter^3];
+	(* Cosmological Redshifting Rate *)
+	K=\[Lambda]\[Alpha]^3/(8 \[Pi] H);
+	(* Effect of 2 Photon Decay and Redshifting *)
+	C=Simplify[(1+K \[CapitalLambda]2\[Gamma] nH (1-xe[z]))/(1+K (\[CapitalLambda]2\[Gamma] +\[Beta]B )nH(1-xe[z]))];
+	{xe,Tmat}/.Flatten[NDSolve[{
+		(* Free electron equation *)
+		D[xe[z],z]==Units`Convert[C (xe[z]^2nH \[Alpha]B-\[Beta]B(1-xe[z])Exp[-E2s1sH/(kB Tmat[z] Units`Kelvin)])/((1+z)H),1],
+		(* Matter/Radiation Temperature Relation Eq 5 *)
+		D[Tmat[z],z]==Units`Convert[(8\[Sigma]T Arad Trad^4)/(3(1+z)H  me PhysicalConstants`SpeedOfLight),1]Simplify[ne/(ne+nH+nHe)]*(Tmat[z]-Trad/Units`Kelvin)+2Tmat[z]/(1+z),
+		(*Initial conditions *)
+		xe[zmax]==1,Tmat[zmax]==T0*(1+zmax)/Units`Kelvin
+	},{xe,Tmat},{z,zmin,zmax}]]
+]]
+
+
+Clear[\[Tau]b];
+\[Tau]b[cosmology_,xe_,zd_?NumericQ,zmin_:100]:=
+With[{
+\[Sigma]T=PhysicalConstants`ThomsonCrossSection,
+mp=PhysicalConstants`ProtonMass,
+c=PhysicalConstants`SpeedOfLight,
+\[CapitalOmega]\[Gamma]=\[CapitalOmega]photons[cosmology][0],
+\[Rho]crit=criticalDensityToday[OptionValue[cosmology,"h"]]Units`Joule/Units`Meter^3,
+YP=OptionValue[cosmology,"YP"],
+h0=H0[cosmology] Convert[(Units`Kilo Units`Meter/Units`Second/(Units`Mega Units`Parsec)),1/Units`Second]
+},
+Convert[(4\[CapitalOmega]\[Gamma])/3(\[Sigma]T(1-YP)\[Rho]crit)/(mp h0 c),1]NIntegrate[(xe[zp](1+zp)^3)/Hratio[cosmology][zp],{zp,zmin,zd}]
 ]
 
 
