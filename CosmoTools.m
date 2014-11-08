@@ -157,6 +157,18 @@ the critical density today. Divide by Hratio[z]^2 to get the density relative to
 critical density at z.";
 
 
+\[CapitalOmega]nuCombined::usage=
+"\[CapitalOmega]nuCombined[name][z] returns the massive + massless neutrino energy density at the specified redshift relative to
+the critical density today. Divide by Hratio[z]^2 to get the density relative to the
+critical density at z.";
+
+
+\[CapitalOmega]cb::usage=
+"\[CapitalOmega]cb[name][z] returns the cdm + baryonic energy density at the specified redshift relative to
+the critical density today. Divide by Hratio[z]^2 to get the density relative to the
+critical density at z.";
+
+
 H0::usage=
 "H0[name] returns H0 in (km/s)/Mpc.";
 
@@ -316,6 +328,10 @@ Units`Convert[
 ]
 
 
+massiveNuFunction[mnu_,Nnu_,Tcmb_]:=With[{A=(180 Zeta[3])/(7 \[Pi]^4),p=1.8614683763259083`,T\[Nu]=(Nnu/3)^(1/4)(4/11)^(1/3)Tcmb}, Function[z,
+(1+(A mnu/((1+z) T\[Nu] N[Units`Convert[PhysicalConstants`BoltzmannConstant/(Units`ElectronVolt/Units`Kelvin),1]]))^p)^(1/p)]]
+
+
 zstar[\[CapitalOmega]mh2_,\[CapitalOmega]bh2_]:=
 With[{g1=0.0783 \[CapitalOmega]bh2^(-0.238)/(1+39.5 \[CapitalOmega]bh2^(0.763)),g2=0.560/(1+21.1 \[CapitalOmega]bh2^(1.81))},
     1048(1+0.00124 \[CapitalOmega]bh2^(-0.738))(1+g1 \[CapitalOmega]mh2^g2)
@@ -419,7 +435,9 @@ Module[{hval,\[CapitalOmega]mval,\[CapitalOmega]\[CapitalLambda]val,\[CapitalOme
       Return[$Failed]
     ];
     name/: \[CapitalOmega]baryon[name]=Function[z,Evaluate[Simplify[(\[CapitalOmega]mval-\[CapitalOmega]ch2val/hval^2-\[CapitalOmega]nu[name][0])(1+z)^3]]];
-    name/: Hratio[name]=Function[z,Evaluate[Sqrt[Simplify[\[CapitalOmega]de[name][z]+\[CapitalOmega]k (1+z)^2+\[CapitalOmega]mat[name][z]+\[CapitalOmega]rad[name][z]]]]];
+	name/: \[CapitalOmega]nuCombined[name]=Function[z,Evaluate[Simplify[7/8(4/11)^(4/3) \[CapitalOmega]photons[name][0](Nnu/3)((3-NnuMassive)+NnuMassive massiveNuFunction[mnu,Nnu,Tcmb][z])*(1+z)^4]]];
+	name/: \[CapitalOmega]cb[name]=Function[z,Evaluate[Simplify[(\[CapitalOmega]mval-\[CapitalOmega]nu[name][0]) (1+z)^3]]];
+    name/: Hratio[name]=Function[z,Evaluate[Sqrt[Simplify[\[CapitalOmega]de[name][z]+\[CapitalOmega]k (1+z)^2+\[CapitalOmega]cb[name][z]+\[CapitalOmega]nuCombined[name][z]+\[CapitalOmega]photons[name][z]]]]];
     name/: hubbleDistance[name]=hubbleScale[PhysicalConstants`SpeedOfLight,hval,Units`Mega Units`Parsec];
     name/: curvatureTransform[name]=Function[x,Evaluate[Simplify[Which[
         \[CapitalOmega]k>0,Sinh[Sqrt[\[CapitalOmega]k]x]/Sqrt[\[CapitalOmega]k],\[CapitalOmega]k<0,Sin[Sqrt[-\[CapitalOmega]k]x]/Sqrt[-\[CapitalOmega]k],True,x]]]];
