@@ -45,6 +45,7 @@ createCosmology::usage=
  - \[CapitalOmega]mat[name][z]
  - \[CapitalOmega]photons[name][z]
  - \[CapitalOmega]nu[name][z]
+ - \[CapitalOmega]nuCombined[name][z]
  - H0[name]
  - Hratio[name][z]
  - curvatureTransform[name][x]
@@ -160,7 +161,7 @@ critical density at z.";
 \[CapitalOmega]nuCombined::usage=
 "\[CapitalOmega]nuCombined[name][z] returns the massive + massless neutrino energy density at the specified redshift relative to
 the critical density today. Divide by Hratio[z]^2 to get the density relative to the
-critical density at z.";
+critical density at z. Based on section 3.3 of Komatsu 2011 (WMAP7).";
 
 
 \[CapitalOmega]cb::usage=
